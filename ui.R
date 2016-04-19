@@ -37,10 +37,21 @@ shinyUI(
       DT::dataTableOutput("mainTable")
     ),
     
+    #event table
+    fluidRow(
+      actionButton("getEvents","Retreive Events for Selected Patients")
+    ),
+    fluidRow(
+      uiOutput("eventTableUi")
+    ),
+    
     sidebarLayout(
       # get patient chart vars
       sidebarPanel(
-        uiOutput("selectVars",style = "overflow-y:scroll; max-height: 200px"),
+        checkboxGroupInput("selectVars","Plot Geometry",
+                           c("Points","Lines","Smooth","Error Bars"),
+                           selected=c("Points","Lines","Smooth","Error Bars")),
+                           #style = "overflow-y:scroll; max-height: 200px"),
         actionButton("plot","Plot"),
         width=2
       ),

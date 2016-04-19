@@ -1,4 +1,3 @@
-
 library(shiny)
 library(ggplot2)
 library(dplyr)
@@ -11,7 +10,6 @@ library(stringr)
 
 # load dataset
 load("data/trPatients.Rdata")
-load("data/trEvents.Rdata")
 
 # Define a server for the Shiny app
 shinyServer(function(input, output,session) {
@@ -29,15 +27,23 @@ shinyServer(function(input, output,session) {
   #retrieve all charts and lab values for selected patients
   chartsLabsDf <- reactive({
     rowIndices <- input$mainTable_rows_selected %>% as.numeric
+    
+    #return NULL if no patients are selected
+    if(length(rowIndices)==0)
+      return(NULL)
+    
     ids <- trPatients[rowIndices,] %>%
       select(subject_id,hadm_id,daysInHospital)
-    trEvents %>%
-      inner_join(ids)
+    
+    trEvents %>% inner_join(ids)
   })
   
   #number of events recorded for each chart item
   chartLabEventsSummary <- reactive({
-    temp<-chartsLabsDf()  %>%
+    df <- chartsLabsDf()
+    if(is.null(df))
+      return(NULL)
+    temp<-df %>%
       group_by(itemid,label,subject_id) %>%
       #daysInHospital will be the same per group but
       #we just need to select any of them so we choose max
@@ -55,17 +61,26 @@ shinyServer(function(input, output,session) {
     temp
   })
   
-  output$selectVars <- renderUI({
-    req(input$mainTable_rows_selected)
-    
+  updateEventTableUi <- eventReactive(input$getEvents,{
     df <- chartLabEventsSummary()
-    labels <- df$label
-    numEventsStr <- paste0(df$Q5,"-[",df$medNumEventsPerDay,"]-",df$Q95)     
-    varStr <- paste(labels,numEventsStr)
-    
-    checkboxGroupInput("varCheckboxes","Select Measurements to Plot",
-                       choices=varStr)
+    print("checking for null df")
+    if(is.null(df))
+      return("Select Patients to View Available Event Logs")
+    print("returning output")
+    DT::dataTableOutput("eventTable")
   })
+  output$eventTableUi <- renderUI({
+    updateEventTableUi()
+  })
+  
+  updateEventTable <- eventReactive(input$getEvents,{
+    DT::datatable(chartLabEventsSummary())
+  })
+  output$eventTable <- DT::renderDataTable({
+    updateEventTable()
+  })
+  
+  
   
   observeEvent(input$plot,{
     output$mainPlot <- renderPlot({
