@@ -46,8 +46,8 @@ shinyServer(function(input, output,session) {
     temp<-df %>%
       group_by(itemid,label,subject_id) %>%
       #daysInHospital will be the same per group but
-      #we just need to select any of them so we choose max
-      summarize(numEventsPerDay=floor(n()/as.numeric(max(daysInHospital)))) %>%
+      #we just need to select any of them so we choose the first with head
+      summarize(numEventsPerDay=floor(n()/as.numeric(head(daysInHospital,1)))) %>%
       ungroup() %>%
       group_by(itemid,label) %>%
       summarize(medNumEventsPerDay=median(numEventsPerDay,na.rm=TRUE),
