@@ -25,7 +25,7 @@ shinyServer(function(input, output,session) {
   })
 
   #retrieve all charts and lab values for selected patients
-  chartsLabsDf <- reactive({
+  chartsDf <- reactive({
     rowIndices <- input$mainTable_rows_selected %>% as.numeric
     
     #return NULL if no patients are selected
@@ -35,12 +35,12 @@ shinyServer(function(input, output,session) {
     ids <- trPatients[rowIndices,] %>%
       select(subject_id,hadm_id,daysInHospital)
     
-    trEvents %>% inner_join(ids)
+    trChartEvents %>% inner_join(ids)
   })
   
   #number of events recorded for each chart item
   chartLabEventsSummary <- reactive({
-    df <- chartsLabsDf()
+    df <- chartsDf()
     if(is.null(df))
       return(NULL)
     temp<-df %>%
@@ -61,6 +61,9 @@ shinyServer(function(input, output,session) {
     temp
   })
   
+  #this function will only get updated if getEvents gets clicked. if
+  #it does get updated then eventTableUi will get updated placing either
+  #text or eventTable in the ui file. 
   updateEventTableUi <- eventReactive(input$getEvents,{
     df <- chartLabEventsSummary()
     print("checking for null df")
@@ -73,6 +76,8 @@ shinyServer(function(input, output,session) {
     updateEventTableUi()
   })
   
+  #once a table is placed in the ui from the code directly above,
+  #the table will only get updated when we click the getEvents button
   updateEventTable <- eventReactive(input$getEvents,{
     DT::datatable(chartLabEventsSummary())
   })
@@ -80,23 +85,39 @@ shinyServer(function(input, output,session) {
     updateEventTable()
   })
   
-  
+  #retrieve all charts and lab values for selected patients
+  selectedCharts <- eventReactive(input$plot,{
+    rowIndices <- input$eventTable_rows_selected %>% as.numeric
+    
+    #return NULL if no charts are selected
+    if(length(rowIndices)==0)
+      return(NULL)
+    
+    #otherwise figure out the itemids of the chart charts selected and
+    #only pick out the the chart events with those itemids from the df
+    #of all the chart events and return that
+    rowIndices <- input$eventTable_rows_selected %>% as.numeric
+    itemdIdsSelected <- (chartLabEventsSummary())[rowIndices,] %>%
+      select(itemid)
+    
+    chartsDf() %>%
+      inner_join(itemdIdsSelected)
+  })
   
   observeEvent(input$plot,{
     output$mainPlot <- renderPlot({
-      checkedVars <- input$varCheckboxes %>%
-        str_replace(" [0-9]+[.]{0,1}[0-9]{0,1}-\\[[0-9]+[.]{0,1}[0-9]{0,1}\\]-[0-9]+[.]{0,1}[0-9]{0,1}","")
-      print(checkedVars)
       
-      df<-chartsLabsDf() %>%
-        filter(label %in% c(checkedVars,"Transfusion"))
-      print(df)
+      df <- selectedCharts()
+      if(is.null(df))
+        return("No Charts Selected. Nothing to Plot.")
       
       ggplot(df,aes(x=timeSinceAdmit,y=valuenum,group=factor(subject_id),color=factor(subject_id))) +
         facet_grid(label ~ .,scale="free_y") +
-        geom_line(data=subset(df,measType != "Transfusion")) +
-        geom_smooth(data=subset(df,measType != "Transfusion")) +
-        geom_point(data=subset(df,measType == "Transfusion"),aes(shape=fluid),size=4) +
+        #geom_line(data=subset(df,measType != "Transfusion")) +
+        #geom_smooth(data=subset(df,measType != "Transfusion")) +
+        #geom_point(data=subset(df,measType == "Transfusion"),aes(shape=fluid),size=4) +
+        geom_line() +
+        geom_smooth() +
         scale_x_datetime(labels=date_format("Day %d \n %H:%M"))
     },height=1000,width=1200)
   })
