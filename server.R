@@ -10,22 +10,19 @@ library(stringr)
 
 # load dataset
 load("data/trPatients.Rdata")
+load("data/trEvents.Rdata")
 
 # Define a server for the Shiny app
 shinyServer(function(input, output,session) {
   
   # Filter data based on selections
   output$mainTable <- DT::renderDataTable({
-    trPatientsFiltered <- trPatients %>%
-      filter(input$ageRange[1] <= age & age <= input$ageRange[2]) %>%
-      filter(input$hospitalStayRange[1] <= daysInHospital & daysInHospital <= input$hospitalStayRange[2]) %>%
-      filter(input$totalRbcRange[1] <= totalRBC & totalRBC <= input$totalRbcRange[2])
-    
-    DT::datatable(trPatientsFiltered)
+    DT::datatable(trPatients)
   })
 
-  #retrieve all charts and lab values for selected patients
-  chartsDf <- reactive({
+  #retrieves a basic dataframe with the ids and daysInHospital
+  #for the patients that have been selected
+  selectedPatientIdDf <- reactive({
     rowIndices <- input$mainTable_rows_selected %>% as.numeric
     
     #return NULL if no patients are selected
@@ -34,8 +31,12 @@ shinyServer(function(input, output,session) {
     
     ids <- trPatients[rowIndices,] %>%
       select(subject_id,hadm_id,daysInHospital)
-    
-    trChartEvents %>% inner_join(ids)
+  })
+  
+  #retrieve all charts and lab values for selected patients
+  chartsDf <- reactive({
+    ids <- selectedPatientIdDf()
+    trEvents %>% inner_join(ids)
   })
   
   #number of events recorded for each chart item
@@ -43,7 +44,8 @@ shinyServer(function(input, output,session) {
     df <- chartsDf()
     if(is.null(df))
       return(NULL)
-    temp<-df %>%
+    
+    df %>%
       group_by(itemid,label,subject_id) %>%
       #daysInHospital will be the same per group but
       #we just need to select any of them so we choose the first with head
@@ -56,24 +58,43 @@ shinyServer(function(input, output,session) {
       ungroup %>%
       select(itemid,label,medNumEventsPerDay,Q5,Q95) %>%
       arrange(desc(medNumEventsPerDay))
-    
-    print(temp)
-    temp
   })
   
   #this function will only get updated if getEvents gets clicked. if
   #it does get updated then eventTableUi will get updated placing either
-  #text or eventTable in the ui file. 
+  #text or eventTable in the ui file
   updateEventTableUi <- eventReactive(input$getEvents,{
     df <- chartLabEventsSummary()
-    print("checking for null df")
+    
     if(is.null(df))
       return("Select Patients to View Available Event Logs")
-    print("returning output")
+
     DT::dataTableOutput("eventTable")
   })
   output$eventTableUi <- renderUI({
     updateEventTableUi()
+  })
+  
+  #analogously, we will also only display plotting options whence
+  #the eventTable has been shown
+  updatePlotOptionsUi <- eventReactive(input$getEvents,{
+    df <- chartLabEventsSummary()
+    if(is.null(df))
+      return()
+    
+    maxDaysInHospital <- selectedPatientIdDf()$daysInHospital %>% max
+    
+    sidebarPanel(
+      checkboxGroupInput("selectPlotOptions","Plot Geometry",
+                         c("Points","Lines","Smooth","Error Bars"),
+                         selected=c("Points","Lines","Smooth","Error Bars")),
+      sliderInput("plotTimeRangeSlider","Time Range to Plot",min=0,max=maxDaysInHospital,value=c(0,maxDaysInHospital)),
+      actionButton("plot","Plot"),
+      width=2
+    )
+  })
+  output$plotOptionsUi <- renderUI({
+    updatePlotOptionsUi()
   })
   
   #once a table is placed in the ui from the code directly above,
@@ -97,12 +118,15 @@ shinyServer(function(input, output,session) {
     #only pick out the the chart events with those itemids from the df
     #of all the chart events and return that
     rowIndices <- input$eventTable_rows_selected %>% as.numeric
-    itemdIdsSelected <- (chartLabEventsSummary())[rowIndices,] %>%
-      select(itemid)
+    itemsSelected <- (chartLabEventsSummary())[rowIndices,] %>%
+      select(label) %>%
+      rbind(data.frame(label="Transfusion"))
     
     chartsDf() %>%
-      inner_join(itemdIdsSelected)
+      inner_join(itemsSelected)
   })
+  
+  
   
   observeEvent(input$plot,{
     output$mainPlot <- renderPlot({
@@ -111,14 +135,27 @@ shinyServer(function(input, output,session) {
       if(is.null(df))
         return("No Charts Selected. Nothing to Plot.")
       
+      print(input$plotTimeRangeSlider)
+      start <- "2000-01-01 00:00:00" %>% ymd_hms
+      dateLimits <- (c(start+input$plotTimeRangeSlider[1]*60*60*24,start+input$plotTimeRangeSlider[2]*60*60*24) %>%
+        force_tz(tzone="UTC")) + 60*60*8
+      print(dateLimits)
+      
+      df$timeSinceAdmit %>% min %>% print
+      df$timeSinceAdmit %>% max %>% print
+      
+      df <- df %>% mutate(subject_id=factor(subject_id))
+      idLevels <- df$subject_id %>% levels
+      
       ggplot(df,aes(x=timeSinceAdmit,y=valuenum,group=factor(subject_id),color=factor(subject_id))) +
-        facet_grid(label ~ .,scale="free_y") +
-        #geom_line(data=subset(df,measType != "Transfusion")) +
-        #geom_smooth(data=subset(df,measType != "Transfusion")) +
-        #geom_point(data=subset(df,measType == "Transfusion"),aes(shape=fluid),size=4) +
-        geom_line() +
-        geom_smooth() +
-        scale_x_datetime(labels=date_format("Day %d \n %H:%M"))
+        facet_grid(label+measType ~ .,scale="free_y") +
+        geom_line(data=subset(df,measType == "Chart" & !isFactor)) +
+        geom_line(data=subset(df,measType=="Chart" & isFactor)) +
+        geom_label(data=subset(df,measType=="Chart" & isFactor),aes(label=value,fill=factor(subject_id)),color="white",fontface="bold",size=3) +
+        geom_point(data=subset(df,measType == "Transfusion"),aes(size=valuenum,color=factor(subject_id))) +
+        geom_label_repel(data=subset(df,measType == "Transfusion"),aes(label=fluid,fill=factor(subject_id)),color="white",fontface="bold",size=3) +
+        scale_fill_discrete(breaks=idLevels,limits=idLevels,drop=FALSE) +
+        scale_x_datetime(labels=date_format("Day %d \n %H:%M"),limits=dateLimits)
     },height=1000,width=1200)
   })
   
