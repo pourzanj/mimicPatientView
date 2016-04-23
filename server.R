@@ -30,7 +30,7 @@ shinyServer(function(input, output,session) {
       return(NULL)
     
     ids <- trPatients[rowIndices,] %>%
-      select(subject_id,hadm_id,daysInHospital)
+      select(subject_id,hadm_id,daysInHospital,hoursToAdmit)
   })
   
   #retrieve all charts and lab values for selected patients
@@ -82,13 +82,15 @@ shinyServer(function(input, output,session) {
     if(is.null(df))
       return()
     
-    maxDaysInHospital <- selectedPatientIdDf()$daysInHospital %>% max
+    patientDf <- selectedPatientIdDf()
+    earliestEdReg <- -(((patientDf$hoursToAdmit %>% max(na.rm=TRUE))/24) %>% ceiling)
+    maxDaysInHospital <- patientDf$daysInHospital %>% max(na.rm=TRUE)
     
     sidebarPanel(
       checkboxGroupInput("selectPlotOptions","Plot Geometry",
                          c("Points","Lines","Smooth","Error Bars"),
-                         selected=c("Points","Lines","Smooth","Error Bars")),
-      sliderInput("plotTimeRangeSlider","Time Range to Plot",min=0,max=maxDaysInHospital,value=c(0,maxDaysInHospital)),
+                         selected=c("Lines")),
+      sliderInput("plotTimeRangeSlider","Time Range to Plot",min=earliestEdReg,max=maxDaysInHospital,value=c(earliestEdReg,maxDaysInHospital)),
       actionButton("plot","Plot"),
       width=2
     )
@@ -120,7 +122,7 @@ shinyServer(function(input, output,session) {
     rowIndices <- input$eventTable_rows_selected %>% as.numeric
     itemsSelected <- (chartLabEventsSummary())[rowIndices,] %>%
       select(label) %>%
-      rbind(data.frame(label="Transfusion"))
+      rbind(data.frame(label="Transfusion"),data.frame(label="Transfer"))
     
     chartsDf() %>%
       inner_join(itemsSelected)
@@ -135,27 +137,36 @@ shinyServer(function(input, output,session) {
       if(is.null(df))
         return("No Charts Selected. Nothing to Plot.")
       
-      print(input$plotTimeRangeSlider)
       start <- "2000-01-01 00:00:00" %>% ymd_hms
       dateLimits <- (c(start+input$plotTimeRangeSlider[1]*60*60*24,start+input$plotTimeRangeSlider[2]*60*60*24) %>%
         force_tz(tzone="UTC")) + 60*60*8
-      print(dateLimits)
+  
+      idLevels <- factor(df$subject_id) %>% levels
       
-      df$timeSinceAdmit %>% min %>% print
-      df$timeSinceAdmit %>% max %>% print
-      
-      df <- df %>% mutate(subject_id=factor(subject_id))
-      idLevels <- df$subject_id %>% levels
-      
-      ggplot(df,aes(x=timeSinceAdmit,y=valuenum,group=factor(subject_id),color=factor(subject_id))) +
+      p <- ggplot(df,aes(x=timeSinceAdmit,y=valuenum,group=factor(subject_id),color=factor(subject_id))) +
         facet_grid(label+measType ~ .,scale="free_y") +
-        geom_line(data=subset(df,measType == "Chart" & !isFactor)) +
+        geom_point(data=subset(df,measType=="Transfer"),aes(size=valuenum,color=factor(subject_id))) +
+        geom_label_repel(data=subset(df,measType=="Transfer"),aes(label=value,fill=factor(subject_id)),color="white",fontface="bold",size=3) +
         geom_line(data=subset(df,measType=="Chart" & isFactor)) +
         geom_label(data=subset(df,measType=="Chart" & isFactor),aes(label=value,fill=factor(subject_id)),color="white",fontface="bold",size=3) +
         geom_point(data=subset(df,measType == "Transfusion"),aes(size=valuenum,color=factor(subject_id))) +
         geom_label_repel(data=subset(df,measType == "Transfusion"),aes(label=fluid,fill=factor(subject_id)),color="white",fontface="bold",size=3) +
         scale_fill_discrete(breaks=idLevels,limits=idLevels,drop=FALSE) +
-        scale_x_datetime(labels=date_format("Day %d \n %H:%M"),limits=dateLimits)
+        scale_x_datetime(labels=date_format("Day %d \n %H:%M")) +
+        coord_cartesian(xlim=dateLimits)
+      
+      chartPlottingOptionsSelected <- input$selectPlotOptions
+      print(chartPlottingOptionsSelected)
+      if("Lines" %in% chartPlottingOptionsSelected)
+        p <- p + geom_line(data=subset(df,measType == "Chart" & !isFactor))
+      if("Points" %in% chartPlottingOptionsSelected)
+        p <-p + geom_point(data=subset(df,measType == "Chart" & !isFactor))
+      if("Smooth" %in% chartPlottingOptionsSelected & "Error Bars"  %in% chartPlottingOptionsSelected)
+        p <-p + geom_smooth(data=subset(df,measType == "Chart" & !isFactor),se=TRUE)
+      if("Smooth" %in% chartPlottingOptionsSelected & !("Error Bars"  %in% chartPlottingOptionsSelected))
+        p <-p + geom_smooth(data=subset(df,measType == "Chart" & !isFactor),se=FALSE)
+      
+      return(p)
     },height=1000,width=1200)
   })
   
