@@ -8,14 +8,14 @@ library(formattable)
 library(shinydashboard)
 library(stringr)
 
-# load dataset
+# Load Data Set ------------------------------------------------------
 load("data/trPatients.Rdata")
 load("data/trEvents.Rdata")
 
-# Define a server for the Shiny app
+# Server Definition -------------------------------------------------
 shinyServer(function(input, output,session) {
   
-  # Filter data based on selections
+  # Patient Table
   output$mainTable <- DT::renderDataTable({
     DT::datatable(trPatients)
   })
@@ -39,7 +39,8 @@ shinyServer(function(input, output,session) {
     trEvents %>% inner_join(ids)
   })
   
-  #number of events recorded for each chart item
+  #this function summarizes the measurements the selected patients have
+  #to display in the events table
   chartLabEventsSummary <- reactive({
     df <- chartsDf()
     if(is.null(df))
@@ -62,7 +63,8 @@ shinyServer(function(input, output,session) {
   
   #this function will only get updated if getEvents gets clicked. if
   #it does get updated then eventTableUi will get updated placing either
-  #text or eventTable in the ui file
+  #text or eventTable in the ui file. We have this because we don't want
+  #an empty eventTable to show up if no patients are selected
   updateEventTableUi <- eventReactive(input$getEvents,{
     df <- chartLabEventsSummary()
     
@@ -129,7 +131,7 @@ shinyServer(function(input, output,session) {
   })
   
   
-  
+  #main plot retrieves plotting information then returns ggplot object
   observeEvent(input$plot,{
     output$mainPlot <- renderPlot({
       
