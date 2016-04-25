@@ -9,8 +9,8 @@ library(shinydashboard)
 library(stringr)
 
 # Load Data Set ------------------------------------------------------
-load("data/trPatients.Rdata")
-load("data/trEvents.Rdata")
+load("~/Dropbox/mimicPatientViewData/trPatients.Rdata")
+load("~/Dropbox/mimicPatientViewData/trEvents.Rdata")
 
 # Server Definition -------------------------------------------------
 shinyServer(function(input, output,session) {
