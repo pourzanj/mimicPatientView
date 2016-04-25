@@ -24,12 +24,14 @@ data_dir = ifelse(
   Sys.info()[['nodename']] == "salacia.local",
   "mimicPatientViewData",
   "~/Dropbox/mimicPatientViewData")
+
 load(file.path(data_dir, "trPatients.Rdata"))
 load(file.path(data_dir, "trEvents.Rdata"))
 
+
 # Server Definition -------------------------------------------------
 shinyServer(function(input, output,session) {
-  
+
   # Patient Table
   output$mainTable <- DT::renderDataTable({
     DT::datatable(trPatients)
@@ -65,15 +67,22 @@ shinyServer(function(input, output,session) {
       group_by(itemid,label,subject_id) %>%
       #daysInHospital will be the same per group but
       #we just need to select any of them so we choose the first with head
-      summarize(numEventsPerDay=floor(n()/as.numeric(head(daysInHospital,1)))) %>%
+      summarize(
+        numEventsPerDay = floor(n()/as.numeric(head(daysInHospital,1)))) %>%
+      ungroup() %>%
+      group_by(subject_id) %>%
+      mutate(
+        numPatients = n()) %>% # TODO: giving WRONG results -- too high for selected!
       ungroup() %>%
       group_by(itemid,label) %>%
-      summarize(medNumEventsPerDay=median(numEventsPerDay,na.rm=TRUE),
-                Q5=quantile(numEventsPerDay,probs=0.05),
-                Q95=quantile(numEventsPerDay,probs=0.95)) %>%
+      summarize(
+        numPatients        = first(numPatients),
+        medNumEventsPerDay = median(  numEventsPerDay, na.rm=TRUE),
+        Q5                 = quantile(numEventsPerDay, probs=0.05),
+        Q95                = quantile(numEventsPerDay, probs=0.95)) %>%
       ungroup %>%
-      select(itemid,label,medNumEventsPerDay,Q5,Q95) %>%
-      arrange(desc(medNumEventsPerDay))
+      select(itemid,label,numPatients,medNumEventsPerDay,Q5,Q95) %>%
+      arrange(desc(numPatients),desc(medNumEventsPerDay))
   })
   
   #this function will only get updated if getEvents gets clicked. if
