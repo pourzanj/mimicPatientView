@@ -1,3 +1,13 @@
+
+# install packages if ----
+for (pkg in c('shiny','ggplot2','scales','lubridate','magrittr','formattable','shinydashboard','stringr')){
+  if (!require(pkg, character.only=T)){
+    install.packages(pkg)
+    library(pkg)
+  }
+}
+
+# load libraries in standard way ----
 library(shiny)
 library(ggplot2)
 library(dplyr)
@@ -9,8 +19,12 @@ library(shinydashboard)
 library(stringr)
 
 # Load Data Set ------------------------------------------------------
-load("~/Dropbox/mimicPatientViewData/trPatients.Rdata")
-load("~/Dropbox/mimicPatientViewData/trEvents.Rdata")
+data_dir = ifelse(
+  Sys.info()[['nodename']] == "salacia.local",
+  "mimicPatientViewData",
+  "~/Dropbox/mimicPatientViewData")
+load(file.path(data_dir, "trPatients.Rdata"))
+load(file.path(data_dir, "trEvents.Rdata"))
 
 # Server Definition -------------------------------------------------
 shinyServer(function(input, output,session) {
