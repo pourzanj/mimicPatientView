@@ -1,6 +1,6 @@
 
 # install packages if ----
-for (pkg in c('shiny','ggplot2','scales','lubridate','magrittr','formattable','shinydashboard','stringr')){
+for (pkg in c('shiny','ggplot2','scales','lubridate','magrittr','formattable','shinydashboard','stringr','ggrepel')){
   if (!require(pkg, character.only=T)){
     install.packages(pkg)
     library(pkg)
@@ -17,6 +17,7 @@ library(magrittr)
 library(formattable)
 library(shinydashboard)
 library(stringr)
+library(ggrepel)
 
 # Load Data Set ------------------------------------------------------
 data_dir = ifelse(
