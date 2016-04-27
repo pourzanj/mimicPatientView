@@ -2,4 +2,9 @@
 .Rhistory
 .RData
 .Ruserdata
+<<<<<<< HEAD
 .DS_Store
+=======
+mimicPatientViewData
+.DS_Store
+>>>>>>> 67c45db239b0c4fe3cad65a4065990c919b0bd37
